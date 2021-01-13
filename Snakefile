@@ -420,7 +420,7 @@ if config["foresight"] == "overnight":
             python=config['results_dir'] + config['run'] + "/logs/{network}_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}_python.log",
             memory=config['results_dir'] + config['run'] + "/logs/{network}_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}_memory.log"
         benchmark: config['results_dir'] + config['run'] + "/benchmarks/solve_network/{network}_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}"
-        threads: 4
+        threads: config['solving']['solver']['threads']
         resources: mem_mb=config['solving']['mem']
         # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
         script: "scripts/solve_network.py"

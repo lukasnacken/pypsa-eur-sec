@@ -267,13 +267,15 @@ def solve_network(n, config=None, solver_log=None, opts=None):
         #print("Model is saved to MPS")
         #sys.exit()
 
+        tmpdir = snakemake.config['solving'].get('tmpdir')
 
         status, termination_condition = n.lopf(pyomo=False,
                                                solver_name=solver_name,
                                                solver_logfile=solver_log,
                                                solver_options=solver_options,
                                                extra_functionality=extra_functionality,
-                                               formulation=solve_opts['formulation'])
+                                               formulation=solve_opts['formulation'],
+                                               solver_dir=tmpdir)
                                                #extra_postprocessing=extra_postprocessing
                                                #keep_files=True
                                                #free_memory={'pypsa'}
