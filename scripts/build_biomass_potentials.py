@@ -56,7 +56,9 @@ if __name__ == "__main__":
         snakemake.input = Dict()
         snakemake.input['jrc_potentials'] = "data/biomass/JRC Biomass Potentials.xlsx"
         snakemake.output = Dict()
-        snakemake.output['biomass_potentials'] = 'data/biomass_potentials.csv'
+        snakemake.output['biomass_potentials'] = 'resources/biomass_potentials.csv'
+        snakemake.output['biomass_potentials_all'] = 'resources/biomass_potentials_all.csv'
+
         with open('config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
 
