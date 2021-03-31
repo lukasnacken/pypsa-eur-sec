@@ -273,6 +273,7 @@ def solve_network(n, config=None, solver_log=None, opts=None):
                                                solver_name=solver_name,
                                                solver_logfile=solver_log,
                                                solver_options=solver_options,
+                                               solver_dir=tmpdir, 
                                                extra_functionality=extra_functionality,
                                                formulation=solve_opts['formulation'],
                                                solver_dir=tmpdir)
