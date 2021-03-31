@@ -275,8 +275,7 @@ def solve_network(n, config=None, solver_log=None, opts=None):
                                                solver_options=solver_options,
                                                solver_dir=tmpdir, 
                                                extra_functionality=extra_functionality,
-                                               formulation=solve_opts['formulation'],
-                                               solver_dir=tmpdir)
+                                               formulation=solve_opts['formulation'])
                                                #extra_postprocessing=extra_postprocessing
                                                #keep_files=True
                                                #free_memory={'pypsa'}
