@@ -24,7 +24,8 @@ def rename_techs(label):
                                "battery" : "battery storage",
                                "CC" : "CC"}
 
-    rename = {"solar" : "solar PV",
+    rename = {"solar" : "solar PV (utility-scale)",
+              "solar rooftop": "solar PV (rooftop)",
               "Sabatier" : "methanation",
               "offwind" : "offshore wind",
               "offwind-ac" : "offshore wind (AC)",
@@ -57,7 +58,7 @@ def rename_techs(label):
     return label
 
 
-preferred_order = pd.Index(["transmission lines","hydroelectricity","hydro reservoir","run of river","pumped hydro storage","solid biomass","biogas","onshore wind","offshore wind","offshore wind (AC)","offshore wind (DC)","solar PV","solar thermal","solar","building retrofitting","ground heat pump","air heat pump","heat pump","resistive heater","power-to-heat","gas-to-power/heat","CHP","OCGT","gas boiler","gas","natural gas","helmeth","methanation","hydrogen storage","power-to-gas","power-to-liquid","battery storage","hot water storage","CO2 sequestration"])
+preferred_order = pd.Index(["transmission lines","hydroelectricity","hydro reservoir","run of river","pumped hydro storage","solid biomass","biogas","onshore wind","offshore wind","offshore wind (AC)","offshore wind (DC)","solar PV (rooftop)","solar PV (utility-scale)","solar thermal","building retrofitting","ground heat pump","air heat pump","heat pump","resistive heater","power-to-heat","gas-to-power/heat","CHP","OCGT","gas boiler","gas","natural gas","helmeth","methanation","hydrogen storage","power-to-gas","power-to-liquid","battery storage","hot water storage","CO2 sequestration"])
 
 def plot_costs():
 
