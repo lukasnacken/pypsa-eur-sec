@@ -1226,7 +1226,7 @@ def add_heat(network):
 
         ## Add heat pumps
 
-        heat_pump_type = "air" if "urban" in name else "ground"
+        heat_pump_type = "air" if ("urban" in name and name != "urban central") else "ground"
 
         costs_name = "{} {}-sourced heat pump".format(name_type,heat_pump_type)
         cop = {"air" : ashp_cop, "ground" : gshp_cop}
