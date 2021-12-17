@@ -41,14 +41,18 @@ locations of industry from `HotMaps database <https://gitlab.com/hotmaps/industr
 
 Hydrogen network: nodal.
 
-Methane network: single node for Europe, since future demand is so
-low and no bottlenecks are expected.
+Methane network: single node for Europe, since future demand is so low and no
+bottlenecks are expected. Optionally, if for example retrofitting from fossil
+gas to hydrogen is to be considered, the methane grid can be nodally resolved
+based on SciGRID_gas data.
 
-Solid biomass:  single node for Europe, until transport costs can be
-incorporated.
+Solid biomass: choice between single node for Europe and nodal where biomass
+potential is regionally disaggregated (currently given per country,
+then distributed by population density within)
+and transport of solid biomass is possible.
 
 CO2:  single node for Europe, but a transport and storage cost is added for
-sequestered CO2.
+sequestered CO2. Optionally: nodal, with CO2 transport via pipelines.
 
 Liquid hydrocarbons: single node for Europe, since transport costs for
 liquids are low.

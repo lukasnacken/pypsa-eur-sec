@@ -1,4 +1,13 @@
 
+from os.path import exists
+from shutil import copyfile
+
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
+
+if not exists("config.yaml"):
+    copyfile("config.default.yaml", "config.yaml")
+
 configfile: "config.yaml"
 
 
@@ -6,7 +15,6 @@ wildcard_constraints:
     lv="[a-z0-9\.]+",
     simpl="[a-zA-Z0-9]*",
     clusters="[0-9]+m?",
-    sectors="[+a-zA-Z0-9]+",
     opts="[-+a-zA-Z0-9]*",
     sector_opts="[-+a-zA-Z0-9\.\s]*"
 
@@ -20,7 +28,6 @@ subworkflow pypsaeur:
     workdir: "../pypsa-eur"
     snakefile: "../pypsa-eur/Snakefile"
     configfile: "../pypsa-eur/config.yaml"
-
 
 rule all:
     input: SDIR + '/graphs/costs.pdf'
@@ -36,6 +43,22 @@ rule prepare_sector_networks:
     input:
         expand(RDIR + "/prenetworks/elec_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}.nc",
                **config['scenario'])
+
+datafiles = [
+    "eea/UNFCCC_v23.csv",
+    "switzerland-sfoe/switzerland-new_format.csv",
+    "nuts/NUTS_RG_10M_2013_4326_LEVL_2.geojson",
+    "myb1-2017-nitro.xls",
+    "Industrial_Database.csv",
+    "emobility/KFZ__count",
+    "emobility/Pkw__count",
+]
+
+if config.get('retrieve_sector_databundle', True):
+    rule retrieve_sector_databundle:
+        output:  expand('data/{file}', file=datafiles)
+        log: "logs/retrieve_sector_databundle.log"
+        script: 'scripts/retrieve_sector_databundle.py'
 
 
 rule build_population_layouts:
@@ -76,6 +99,61 @@ rule build_simplified_population_layouts:
     resources: mem_mb=10000
     benchmark: "benchmarks/build_clustered_population_layouts/s{simpl}"
     script: "scripts/build_clustered_population_layouts.py"
+
+
+if config["sector"]["gas_network"] or config["sector"]["H2_retrofit"]:
+
+    datafiles = [
+        "IGGIELGN_LNGs.geojson",
+        "IGGIELGN_BorderPoints.geojson",
+        "IGGIELGN_Productions.geojson",
+        "IGGIELGN_PipeSegments.geojson",
+    ]
+
+
+    rule retrieve_gas_infrastructure_data:
+        output: expand("data/gas_network/scigrid-gas/data/{files}", files=datafiles)
+        script: 'scripts/retrieve_gas_infrastructure_data.py'
+
+
+    rule build_gas_network:
+        input:
+            gas_network="data/gas_network/scigrid-gas/data/IGGIELGN_PipeSegments.geojson"
+        output:
+            cleaned_gas_network="resources/gas_network.csv"
+        resources: mem_mb=4000
+        script: "scripts/build_gas_network.py"
+
+
+    rule build_gas_input_locations:
+        input:
+            lng="data/gas_network/scigrid-gas/data/IGGIELGN_LNGs.geojson",
+            entry="data/gas_network/scigrid-gas/data/IGGIELGN_BorderPoints.geojson",
+            production="data/gas_network/scigrid-gas/data/IGGIELGN_Productions.geojson",
+            planned_lng="data/gas_network/planned_LNGs.csv",
+            regions_onshore=pypsaeur("resources/regions_onshore_elec_s{simpl}_{clusters}.geojson"),
+            regions_offshore=pypsaeur('resources/regions_offshore_elec_s{simpl}_{clusters}.geojson')
+        output:
+            gas_input_nodes="resources/gas_input_locations_s{simpl}_{clusters}.geojson",
+            gas_input_nodes_simplified="resources/gas_input_locations_s{simpl}_{clusters}_simplified.csv"
+        resources: mem_mb=2000,
+        script: "scripts/build_gas_input_locations.py"
+
+
+    rule cluster_gas_network:
+        input:
+            cleaned_gas_network="resources/gas_network.csv",
+            regions_onshore=pypsaeur("resources/regions_onshore_elec_s{simpl}_{clusters}.geojson"),
+            regions_offshore=pypsaeur("resources/regions_offshore_elec_s{simpl}_{clusters}.geojson")
+        output:
+            clustered_gas_network="resources/gas_network_elec_s{simpl}_{clusters}.csv"
+        resources: mem_mb=4000
+        script: "scripts/cluster_gas_network.py"
+
+
+    gas_infrastructure = {**rules.cluster_gas_network.output, **rules.build_gas_input_locations.output}
+else:
+    gas_infrastructure = {}
 
 
 rule build_heat_demands:
@@ -157,6 +235,7 @@ rule build_energy_totals:
         co2="data/eea/UNFCCC_v23.csv",
         swiss="data/switzerland-sfoe/switzerland-new_format.csv",
         idees="data/jrc-idees-2015",
+        district_heat_share='data/district_heat_share.csv',
         eurostat=input_eurostat
     output:
         energy_name='resources/energy_totals.csv',
@@ -170,14 +249,48 @@ rule build_energy_totals:
 
 rule build_biomass_potentials:
     input:
-        jrc_potentials="data/biomass/JRC Biomass Potentials.xlsx"
+        enspreso_biomass=HTTP.remote("https://cidportal.jrc.ec.europa.eu/ftp/jrc-opendata/ENSPRESO/ENSPRESO_BIOMASS.xlsx", keep_local=True),
+        nuts2="data/nuts/NUTS_RG_10M_2013_4326_LEVL_2.geojson", # https://gisco-services.ec.europa.eu/distribution/v2/nuts/download/#nuts21
+        regions_onshore=pypsaeur("resources/regions_onshore_elec_s{simpl}_{clusters}.geojson"),
+        nuts3_population="../pypsa-eur/data/bundle/nama_10r_3popgdp.tsv.gz",
+        swiss_cantons="../pypsa-eur/data/bundle/ch_cantons.csv",
+        swiss_population="../pypsa-eur/data/bundle/je-e-21.03.02.xls",
+        country_shapes=pypsaeur('resources/country_shapes.geojson')
     output:
-        biomass_potentials_all='resources/biomass_potentials_all.csv',
-        biomass_potentials='resources/biomass_potentials.csv'
+        biomass_potentials_all='resources/biomass_potentials_all_s{simpl}_{clusters}.csv',
+        biomass_potentials='resources/biomass_potentials_s{simpl}_{clusters}.csv'
     threads: 1
     resources: mem_mb=1000
-    benchmark: "benchmarks/build_biomass_potentials"
+    benchmark: "benchmarks/build_biomass_potentials_s{simpl}_{clusters}"
     script: 'scripts/build_biomass_potentials.py'
+
+
+if config["sector"]["biomass_transport"]:
+    rule build_biomass_transport_costs:
+        input:
+            transport_cost_data=HTTP.remote("publications.jrc.ec.europa.eu/repository/bitstream/JRC98626/biomass potentials in europe_web rev.pdf", keep_local=True)
+        output:
+            biomass_transport_costs="resources/biomass_transport_costs.csv",
+        threads: 1
+        resources: mem_mb=1000
+        benchmark: "benchmarks/build_biomass_transport_costs"
+        script: 'scripts/build_biomass_transport_costs.py'
+    build_biomass_transport_costs_output = rules.build_biomass_transport_costs.output
+else:
+    build_biomass_transport_costs_output = {}
+
+
+rule build_salt_cavern_potentials:
+    input:
+        salt_caverns="data/h2_salt_caverns_GWh_per_sqkm.geojson",
+        regions_onshore=pypsaeur("resources/regions_onshore_elec_s{simpl}_{clusters}.geojson"),
+        regions_offshore=pypsaeur("resources/regions_offshore_elec_s{simpl}_{clusters}.geojson"),
+    output:
+        h2_cavern_potential="resources/salt_cavern_potentials_s{simpl}_{clusters}.csv"
+    threads: 1
+    resources: mem_mb=2000
+    benchmark: "benchmarks/build_salt_cavern_potentials_s{simpl}_{clusters}"
+    script: "scripts/build_salt_cavern_potentials.py"
 
 
 rule build_ammonia_production:
@@ -220,10 +333,10 @@ rule build_industrial_production_per_country_tomorrow:
     input:
         industrial_production_per_country="resources/industrial_production_per_country.csv"
     output:
-        industrial_production_per_country_tomorrow="resources/industrial_production_per_country_tomorrow.csv"
+        industrial_production_per_country_tomorrow="resources/industrial_production_per_country_tomorrow_{planning_horizons}.csv"
     threads: 1
     resources: mem_mb=1000
-    benchmark: "benchmarks/build_industrial_production_per_country_tomorrow"
+    benchmark: "benchmarks/build_industrial_production_per_country_tomorrow_{planning_horizons}"
     script: 'scripts/build_industrial_production_per_country_tomorrow.py'
 
 
@@ -243,25 +356,25 @@ rule build_industrial_distribution_key:
 rule build_industrial_production_per_node:
     input:
         industrial_distribution_key="resources/industrial_distribution_key_elec_s{simpl}_{clusters}.csv",
-        industrial_production_per_country_tomorrow="resources/industrial_production_per_country_tomorrow.csv"
+        industrial_production_per_country_tomorrow="resources/industrial_production_per_country_tomorrow_{planning_horizons}.csv"
     output:
-        industrial_production_per_node="resources/industrial_production_elec_s{simpl}_{clusters}.csv"
+        industrial_production_per_node="resources/industrial_production_elec_s{simpl}_{clusters}_{planning_horizons}.csv"
     threads: 1
     resources: mem_mb=1000
-    benchmark: "benchmarks/build_industrial_production_per_node/s{simpl}_{clusters}"
+    benchmark: "benchmarks/build_industrial_production_per_node/s{simpl}_{clusters}_{planning_horizons}"
     script: 'scripts/build_industrial_production_per_node.py'
 
 
 rule build_industrial_energy_demand_per_node:
     input:
         industry_sector_ratios="resources/industry_sector_ratios.csv",
-        industrial_production_per_node="resources/industrial_production_elec_s{simpl}_{clusters}.csv",
+        industrial_production_per_node="resources/industrial_production_elec_s{simpl}_{clusters}_{planning_horizons}.csv",
         industrial_energy_demand_per_node_today="resources/industrial_energy_demand_today_elec_s{simpl}_{clusters}.csv"
     output:
-        industrial_energy_demand_per_node="resources/industrial_energy_demand_elec_s{simpl}_{clusters}.csv"
+        industrial_energy_demand_per_node="resources/industrial_energy_demand_elec_s{simpl}_{clusters}_{planning_horizons}.csv"
     threads: 1
     resources: mem_mb=1000
-    benchmark: "benchmarks/build_industrial_energy_demand_per_node/s{simpl}_{clusters}"
+    benchmark: "benchmarks/build_industrial_energy_demand_per_node/s{simpl}_{clusters}_{planning_horizons}"
     script: 'scripts/build_industrial_energy_demand_per_node.py'
 
 
@@ -321,19 +434,19 @@ rule prepare_sector_network:
         energy_totals_name='resources/energy_totals.csv',
         co2_totals_name='resources/co2_totals.csv',
         transport_name='resources/transport_data.csv',
-        traffic_data_KFZ = "data/emobility/KFZ__count",
-        traffic_data_Pkw = "data/emobility/Pkw__count",
-        biomass_potentials='resources/biomass_potentials.csv',
+        traffic_data_KFZ="data/emobility/KFZ__count",
+        traffic_data_Pkw="data/emobility/Pkw__count",
+        biomass_potentials='resources/biomass_potentials_s{simpl}_{clusters}.csv',
         heat_profile="data/heat_load_profile_BDEW.csv",
         costs=CDIR + "costs_{planning_horizons}.csv",
         profile_offwind_ac=pypsaeur("resources/profile_offwind-ac.nc"),
         profile_offwind_dc=pypsaeur("resources/profile_offwind-dc.nc"),
-        h2_cavern="data/hydrogen_salt_cavern_potentials.csv",
+        h2_cavern="resources/salt_cavern_potentials_s{simpl}_{clusters}.csv",
         busmap_s=pypsaeur("resources/busmap_elec_s{simpl}.csv"),
         busmap=pypsaeur("resources/busmap_elec_s{simpl}_{clusters}.csv"),
         clustered_pop_layout="resources/pop_layout_elec_s{simpl}_{clusters}.csv",
         simplified_pop_layout="resources/pop_layout_elec_s{simpl}.csv",
-        industrial_demand="resources/industrial_energy_demand_elec_s{simpl}_{clusters}.csv",
+        industrial_demand="resources/industrial_energy_demand_elec_s{simpl}_{clusters}_{planning_horizons}.csv",
         heat_demand_urban="resources/heat_demand_urban_elec_s{simpl}_{clusters}.nc",
         heat_demand_rural="resources/heat_demand_rural_elec_s{simpl}_{clusters}.nc",
         heat_demand_total="resources/heat_demand_total_elec_s{simpl}_{clusters}.nc",
@@ -352,7 +465,9 @@ rule prepare_sector_network:
         solar_thermal_total="resources/solar_thermal_total_elec_s{simpl}_{clusters}.nc",
         solar_thermal_urban="resources/solar_thermal_urban_elec_s{simpl}_{clusters}.nc",
         solar_thermal_rural="resources/solar_thermal_rural_elec_s{simpl}_{clusters}.nc",
-	    **build_retro_cost_output
+        **build_retro_cost_output,
+        **build_biomass_transport_costs_output,
+        **gas_infrastructure
     output: RDIR + '/prenetworks/elec_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}.nc'
     threads: 1
     resources: mem_mb=2000
@@ -444,7 +559,7 @@ if config["foresight"] == "overnight":
             solver=RDIR + "/logs/elec_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}_solver.log",
             python=RDIR + "/logs/elec_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}_python.log",
             memory=RDIR + "/logs/elec_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}_memory.log"
-        threads: 4
+        threads: config['solving']['solver'].get('threads', 4)
         resources: mem_mb=config['solving']['mem']
         benchmark: RDIR + "/benchmarks/solve_network/elec_s{simpl}_{clusters}_lv{lv}_{opts}_{sector_opts}_{planning_horizons}"
         script: "scripts/solve_network.py"
