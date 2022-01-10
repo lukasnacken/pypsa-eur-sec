@@ -144,10 +144,14 @@ def build_nuts2_shapes():
     nuts2 = gpd.GeoDataFrame(gpd.read_file(snakemake.input.nuts2).set_index('id').geometry)
 
     countries = gpd.read_file(snakemake.input.country_shapes).set_index('name')
-    missing = countries.loc[["AL", "RS", "BA"]]
+    
+    if countries.index.isin(["AL", "RS", "BA"]).any():
+        missing = countries.loc[["AL", "RS", "BA"]]
+        nuts2 = nuts2.append(missing)
+    
     nuts2.rename(index={"ME00": "ME", "MK00": "MK"}, inplace=True)
 
-    return nuts2.append(missing)
+    return nuts2
 
 
 def area(gdf):
